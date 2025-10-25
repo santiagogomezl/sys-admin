@@ -1,9 +1,9 @@
 
-$MailConfig = Get-Content -Path '.\config\mail_config.json' | ConvertFrom-Json
+$mailConfig = Get-Content -Path '.\config\mail_config.json' | ConvertFrom-Json
 
-$MailCreds = New-Object System.Management.Automation.PSCredential(
-    $MailConfig.user, 
-    (ConvertTo-SecureString $MailConfig.pwd -AsPlainText -Force)
+$mailCreds = New-Object System.Management.Automation.PSCredential(
+    $mailConfig.user, 
+    (ConvertTo-SecureString $mailConfig.pwd -AsPlainText -Force)
 )
 
 function Mailer-SendEmail{
@@ -15,7 +15,7 @@ function Mailer-SendEmail{
 
     # Send-MailMessage -To $EmailAddress -From $MailConfig.user -Subject $Subject -Body $Body -BodyAsHtml -SmtpServer $MailConfig.smtpServer -Port $MailConfig.port -UseSSL -Credential $MailCreds
     #Create log
-    Send-MailMessage -To $MailConfig.testRecipient -From $MailConfig.user -Subject $Subject -Body $Body -BodyAsHtml -SmtpServer $MailConfig.smtpServer -Port $MailConfig.port -UseSSL -Credential $MailCreds
+    Send-MailMessage -To $mailConfig.testRecipient -From $mailConfig.user -Subject $Subject -Body $Body -BodyAsHtml -SmtpServer $mailConfig.smtpServer -Port $mailConfig.port -UseSSL -Credential $mailCreds
     Write-Output "Sent"
 }
         # Send Email Message

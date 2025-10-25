@@ -1,5 +1,6 @@
 #Document script
 #Todo
+#Moditi Get-ActiveUsers. Currently only getting users with passwordneverexpires
 ##Add argv with username 
 
 $AD_Config = Get-Content -Path '.\config\ad_config.json' | ConvertFrom-Json
@@ -21,16 +22,16 @@ function Password-Notice{
     param(
         [array]$ActiveUsers
     )
-    $expireindays = $AD_Config.passwordNoticeDays
+    $expireInDays = $AD_Config.passwordNoticeDays
     Import-Module -Name .\mailer.ps1 -Force
-    $DefaultDomainPasswordPolicy = Get-ADDefaultDomainPasswordPolicy
+    $defaultDomainPasswordPolicy = Get-ADDefaultDomainPasswordPolicy
     #DefaultDomainPasswordPolicy.ComplexityEnabled = True
     #https://learn.microsoft.com/en-us/powershell/module/activedirectory/set-addefaultdomainpasswordpolicy?view=windowsserver2025-ps#-complexityenabled
 
-    foreach ($ActiveUser in $ActiveUsers){
-        $Name = $ActiveUser.Name
-        $emailaddress = $ActiveUser.emailaddress
-        $passwordSetDate = $ActiveUser.PasswordLastSet
+    foreach ($activeUser in $ActiveUsers){
+        $name = $activeUser.Name
+        $emailAddress = $activeUser.emailaddress
+        $passwordSetDate = $activeUser.PasswordLastSet
         # $PasswordPol = (Get-AduserResultantPasswordPolicy -Identity $ActiveUser)
         # # Check for Fine Grained Password
         # if (($PasswordPol) -ne $null)
@@ -40,32 +41,33 @@ function Password-Notice{
         # else
         # {
         #     # No FGP set to Domain Default
-        $maxPasswordAge = $DefaultDomainPasswordPolicy.MaxPasswordAge
+        $maxPasswordAge = $defaultDomainPasswordPolicy.MaxPasswordAge
         # }
 
-        $expireson = $passwordsetdate + $maxPasswordAge
+        $expiresOn = $passwordSetDate + $maxPasswordAge
         $today = (get-date)
-        $daystoexpire = (New-TimeSpan -Start $today -End $Expireson).Days
+        $daysToExpire = (New-TimeSpan -Start $today -End $expiresOn).Days
         
         # Check Number of Days to Expiry
-        $messageDays = $daystoexpire
+        $messageDays = $daysToExpire
 
         if (($messageDays) -gt "1"){
-            $messageDays = "in " + "$daystoexpire" + " days."
+            $messageDays = "in " + "$daysToExpire" + " days."
         }
         else{
             $messageDays = "today."
         }
 
         # If a user has no email address listed
-        if (($emailaddress) -eq $null)
+        # if ($emailAddress -eq $null)
+        if ($emailAddress -eq "")
         {
            ##ADD to log
         }# End No Valid Email
 
         $subject="Your password will expire $messageDays"
         $body ="
-        <p> Hi, $($Name)</p>
+        <p> Hi, $($name)</p>
         <p>Your password will expire $($messageDays)</p>
         <p>Please update your password by logging to <a href='https://myaccount.microsoft.com/?ref=MeControl'>My Account</a></p>
         <p>After you have updated your password, lock your computer and log back in with the new password (You will need to be connected to the office network locally or via VPN connection)</p>
@@ -75,8 +77,8 @@ function Password-Notice{
         </P>
         "
 
-        if (($daystoexpire -ge 0) -and ($daystoexpire -lt $expireindays)){
-            Mailer-SendEmail -EmailAddress $emailaddress -Subject $subject -Body $body
+        if (($daysToExpire -ge 0) -and ($daysToExpire -lt $expireInDays)){
+            Mailer-SendEmail -EmailAddress $emailAddress -Subject $subject -Body $body
         }
 
     } 
@@ -87,9 +89,9 @@ function Get-UserGroups{
     param(
         [string]$User
     )
-    $UserData = Get-ADUser -Identity $User -Properties "MemberOf"
-    $UserGroups = $UserData.MemberOf
-    return $UserGroups
+    $userData = Get-ADUser -Identity $User -Properties "MemberOf"
+    $userGroups = $userData.MemberOf
+    return $userGroups
 }
 
 #Remove user from group
@@ -100,14 +102,15 @@ function Remove-UserGroups{
         [System.Management.Automation.PSCredential]$Credential
     )
     
-    foreach ($Group in $Groups){
-        Remove-ADGroupMember -Identity $Group -Members $User -Credential $Credential -Confirm:$false
+    foreach ($group in $Groups){
+        Remove-ADGroupMember -Identity $group -Members $User -Credential $Credential -Confirm:$false
     }
 }
 
-$AD_ActiveUsers = Get-ActiveUsers
+#$AD_ActiveUsers = Get-ActiveUsers
 # Write-Output $AD_ActiveUsers.GetType()
-Password-Notice -ActiveUsers $AD_ActiveUsers
+#Password-Notice -ActiveUsers $AD_ActiveUsers
 
 # $AD_UserGroups = Get-UserGroups -User $AD_User
 # Remove-UserGroups -User $AD_User -Groups $AD_UserGroups -Credential $AD_Creds
+
