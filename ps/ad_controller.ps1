@@ -3,14 +3,12 @@
 #Moditi Get-ActiveUsers. Currently only getting users with passwordneverexpires
 ##Add argv with username 
 
-$AD_Config = Get-Content -Path '.\config\ad_config.json' | ConvertFrom-Json
+$adConfig = Get-Content -Path '.\config\ad_config.json' | ConvertFrom-Json
 
-$AD_Creds = New-Object System.Management.Automation.PSCredential(
-    $AD_Config.user, 
-    (ConvertTo-SecureString $AD_Config.pwd -AsPlainText -Force)
+$adCreds = New-Object System.Management.Automation.PSCredential(
+    $adConfig.user, 
+    (ConvertTo-SecureString $adConfig.pwd -AsPlainText -Force)
 )
-
-$AD_User = "stemmy"
 
 # Get Users From AD who are Enabled, Passwords Expire and are Not Currently Expired
 function Get-ActiveUsers{
@@ -22,7 +20,7 @@ function Password-Notice{
     param(
         [array]$ActiveUsers
     )
-    $expireInDays = $AD_Config.passwordNoticeDays
+    $expireInDays = $adConfig.passwordNoticeDays
     Import-Module -Name .\mailer.ps1 -Force
     $defaultDomainPasswordPolicy = Get-ADDefaultDomainPasswordPolicy
     #DefaultDomainPasswordPolicy.ComplexityEnabled = True
@@ -84,33 +82,55 @@ function Password-Notice{
     } 
 }
 
-#Get user groups
-function Get-UserGroups{
+#Get-UserData
+function Get-UserData{
     param(
         [string]$User
     )
-    $userData = Get-ADUser -Identity $User -Properties "MemberOf"
-    $userGroups = $userData.MemberOf
-    return $userGroups
+    $userData = Get-ADUser -Identity $User -Properties *
+    return $userData
 }
 
 #Remove user from group
 function Remove-UserGroups{
     param( 
-        [string]$User, 
-        [array]$Groups,
+        [object]$UserData, 
         [System.Management.Automation.PSCredential]$Credential
     )
+
+    $userSAM= $UserData.SamAccountName
+    $userGroups = $UserData.MemberOf
     
-    foreach ($group in $Groups){
-        Remove-ADGroupMember -Identity $group -Members $User -Credential $Credential -Confirm:$false
+    foreach ($group in $userGroups){
+        Remove-ADGroupMember -Identity $group -Members $userSAM -Credential $Credential -Confirm:$false
     }
 }
+
+#Disbale user and move to "Former Employees"
+##Add Notes: Disable on $Date by "AD Controller"
+
+function Disable-UserAccount{
+    param(
+        [object]$UserData,
+        [System.Management.Automation.PSCredential]$Credential
+    )
+    ##try/catch
+    ##add login
+
+    $userSAM= $UserData.SamAccountName
+    $userDN = $UserData.DistinguishedName
+    $date = Get-Date -Format "MM/dd/yyyy"
+
+    Disable-ADAccount -Identity $userSAM -Credential $Credential
+    Set-ADUser -Identity $userSAM -Replace @{Description="Account disabled on $date by AD Controller"} -Credential $Credential
+    Move-ADObject -Identity $userDN -TargetPath $adConfig.formerDN -Credential $Credential
+}
+
+#AD Controller uses SamAccountName
+$userData = Get-UserData -User "stemmy"
+Remove-UserGroups -UserData $userData -Credential $adCreds
+Disable-UserAccount -UserData $userData -Credential $adCreds
 
 #$AD_ActiveUsers = Get-ActiveUsers
 # Write-Output $AD_ActiveUsers.GetType()
 #Password-Notice -ActiveUsers $AD_ActiveUsers
-
-# $AD_UserGroups = Get-UserGroups -User $AD_User
-# Remove-UserGroups -User $AD_User -Groups $AD_UserGroups -Credential $AD_Creds
-

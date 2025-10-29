@@ -1,5 +1,5 @@
 
-# $azureConfig = Get-Content -Path '.\config\azure_config.json' | ConvertFrom-Json
+$azureConfig = Get-Content -Path '.\config\azure_config.json' | ConvertFrom-Json
 
 # $azureCreds = New-Object System.Management.Automation.PSCredential(
 #     $azureConfig.user, 
@@ -37,6 +37,7 @@ function Remove-AzureUserGroups{
 
 # Connect-MgGraph -TenantId $azureConfig.tenantId
 
+#azure controller uses userId email address. Use SamAccountName+"@"+azureConfig.domain
 $userId = "stemmy.cell@appliedstemcell.com"
 $azureUserGroups = Get-AzureUserGroups -UserId $userId
 # Write-Output $azureUserGroups
