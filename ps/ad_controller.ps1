@@ -1,7 +1,10 @@
 #Document script
 #Todo
 #Moditi Get-ActiveUsers. Currently only getting users with passwordneverexpires
-##Add argv with username 
+##Add argv with username
+param(
+    [string]$User
+) 
 
 $adConfig = Get-Content -Path '.\config\ad_config.json' | ConvertFrom-Json
 
@@ -106,9 +109,7 @@ function Remove-UserGroups{
     }
 }
 
-#Disbale user and move to "Former Employees"
-##Add Notes: Disable on $Date by "AD Controller"
-
+#Disable user and move to "Former Employees"
 function Disable-UserAccount{
     param(
         [object]$UserData,
@@ -127,7 +128,7 @@ function Disable-UserAccount{
 }
 
 #AD Controller uses SamAccountName
-$userData = Get-UserData -User "stemmy"
+$userData = Get-UserData -User $User
 Remove-UserGroups -UserData $userData -Credential $adCreds
 Disable-UserAccount -UserData $userData -Credential $adCreds
 

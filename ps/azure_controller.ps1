@@ -1,3 +1,6 @@
+param(
+    [string]$UserId
+)
 
 $azureConfig = Get-Content -Path '.\config\azure_config.json' | ConvertFrom-Json
 
@@ -26,21 +29,59 @@ function Remove-AzureUserGroups{
 
     foreach ($group in $Groups){
         $groupId = $group.Id
-        $groupName = (Get-MgGroup -GroupId $groupId).DisplayName
-        Write-Output $groupName
+        $groupData = Get-MgGroup -GroupId $groupId
+        $groupName = $groupData.DisplayName
         #TODO try/catch
         #TODO: Write to log
-        Remove-MgGroupMemberByRef -GroupId $groupId -DirectoryObjectId $userObjectId
+        # Remove-MgGroupMemberByRef -GroupId $groupId -DirectoryObjectId $userObjectId
     }
 
 }
 
-# Connect-MgGraph -TenantId $azureConfig.tenantId
+
+# $scopes = @(
+#     "Chat.ReadWrite.All"
+#     "Directory.Read.All"
+#     "Group.Read.All"
+#     "Mail.ReadWrite"
+#     "People.Read.All"
+#     "Sites.Manage.All"
+#     "User.Read.All"
+#     "User.ReadWrite.All",
+#     "MailboxSettings.ReadWrite"
+# )
+
+# Connect-MgGraph -Scopes $scopes
+
+Connect-MgGraph -TenantId $azureConfig.tenantId -NoWelcome
+
+function Disable-AzureUserAccount{
+    param(
+        [string]$UserId
+    )
+
+    $userLicenses = Get-MgUserLicenseDetail -UserId $UserId
+    $licenseSkuIds = @()
+    foreach ($license in $userLicenses) {
+        $sku = $license.SkuId
+        $licenseSkuIds += $sku
+    }
+
+    #try/cath
+    #will fail if user has no licenses
+    Set-MgUserLicense -UserId $UserId -RemoveLicenses $licenseSkuIds -AddLicenses @()
+    $params = @{
+	    accountEnabled = $false
+    }
+    Update-MgUser -UserId $UserId -BodyParameter $params
+
+}
 
 #azure controller uses userId email address. Use SamAccountName+"@"+azureConfig.domain
-$userId = "stemmy.cell@appliedstemcell.com"
-$azureUserGroups = Get-AzureUserGroups -UserId $userId
-# Write-Output $azureUserGroups
-Remove-AzureUserGroups -UserId $userId -Groups $azureUserGroups
+$azureUserGroups = Get-AzureUserGroups -UserId $UserId
+# Remove-AzureUserGroups -UserId $UserId -Groups $azureUserGroups
+# Disable-AzureUserAccount -UserId $UserId
+
+
 
 
