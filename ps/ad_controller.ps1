@@ -3,10 +3,13 @@
 #Moditi Get-ActiveUsers. Currently only getting users with passwordneverexpires
 ##Add argv with username
 param(
-    [string]$User
+    [string]$User,
+    [bool]$ComputerReport=$false
+
 ) 
 
 $adConfig = Get-Content -Path '.\config\ad_config.json' | ConvertFrom-Json
+$computers = Get-Content -Path '.\config\computers.json' | ConvertFrom-Json
 
 $adCreds = New-Object System.Management.Automation.PSCredential(
     $adConfig.user, 
@@ -19,7 +22,7 @@ function Get-ActiveUsers{
     return $ActiveUsers
 }
 
-function Password-Notice{
+function New-PasswordNotice{
     param(
         [array]$ActiveUsers
     )
@@ -125,13 +128,51 @@ function Disable-UserAccount{
     Disable-ADAccount -Identity $userSAM -Credential $Credential
     Set-ADUser -Identity $userSAM -Replace @{Description="Account disabled on $date by AD Controller"} -Credential $Credential
     Move-ADObject -Identity $userDN -TargetPath $adConfig.formerDN -Credential $Credential
+
+    #Posibly disbale and remove computer from AD
 }
 
+# function Get-ComputerData{
+#     param(
+#         [string]$Hostname
+#     )
+
+#     return Get-ADComputer -Identity $Hostname -Properties *
+
+# }
+
+function New-ComputerReport{
+    param(
+        [array]$ComputerList
+    )
+
+    foreach ($computer in $ComputerList){
+        $hostnames = $computer.hostnames
+        foreach ($hostname in $hostnames){
+            #try/catch
+            try{
+                $computerData = Get-ADComputer -Identity $hostname -Properties *
+                $computerOS = $computerData.OperatingSystem
+                $computerOSVersion = $computerData.OperatingSystemVersion                     
+                Write-Output "$hostname  $computerOS  $computerOSVersion"
+            }
+            catch{
+                #TODO: Write to log failure 
+            }
+        }
+    }
+}
+
+if ($ComputerReport -eq $true){
+    New-ComputerReport -ComputerList $computers
+}
 #AD Controller uses SamAccountName
-$userData = Get-UserData -User $User
-Remove-UserGroups -UserData $userData -Credential $adCreds
-Disable-UserAccount -UserData $userData -Credential $adCreds
+# $userData = Get-UserData -User $User
+# Remove-UserGroups -UserData $userData -Credential $adCreds
+# Disable-UserAccount -UserData $userData -Credential $adCreds
 
 #$AD_ActiveUsers = Get-ActiveUsers
 # Write-Output $AD_ActiveUsers.GetType()
 #Password-Notice -ActiveUsers $AD_ActiveUsers
+
+
