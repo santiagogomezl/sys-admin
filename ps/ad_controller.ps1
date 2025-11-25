@@ -141,6 +141,13 @@ function Disable-UserAccount{
 
 # }
 
+function ConvertTo-DateTime(){
+    param(
+        [long]$Timestamp
+    )
+    return [DateTime]::FromFileTime($Timestamp).ToString("yyyy-MM-dd HH:mm:ss")
+}
+
 function New-ComputerReport{
     param(
         [array]$ComputerList
@@ -153,8 +160,11 @@ function New-ComputerReport{
             try{
                 $computerData = Get-ADComputer -Identity $hostname -Properties *
                 $computerOS = $computerData.OperatingSystem
-                $computerOSVersion = $computerData.OperatingSystemVersion                     
-                Write-Output "$hostname  $computerOS  $computerOSVersion"
+                $computerOSVersion = $computerData.OperatingSystemVersion
+                #Last logon to DC
+                $lastLogon = ConvertTo-DateTime -Timestamp $computerData.lastLogon
+                $badPasswordTime = ConvertTo-DateTime -Timestamp $computerData.badPasswordTime 
+                Write-Output "$hostname  $computerOS  $computerOSVersion $lastLogon $badPasswordTime"
             }
             catch{
                 #TODO: Write to log failure 
