@@ -1,20 +1,21 @@
 param(
     [string]$UserId,
+    [bool]$OffboardExchangeUser=$false,
+    [bool]$Forwarding=$false,
     [string]$ForwardTo
 )
 
 $azureConfig = Get-Content -Path '.\config\azure_config.json' | ConvertFrom-Json
 
-#Install-Module -Name ExchangeOnlineManagement
+Connect-ExchangeOnline -UserPrincipalName $azureConfig.user
 
-# Get-Mailbox | Get-MailboxPermission -User "Heather.Lundie@appliedstemcell.com" | Format-List
 #remove mailbox permissions for user
 function Remove-ExchangeMailboxPermission{
     param(
         [string]$UserId
     )
 
-    #Get mailboxes user has permissions over
+    #Get mailboxes user has permissions over. Iterates over all mailboxes
     # Identity: The mailbox in question.
     # User: The security principal (user, security group, Exchange management role group, etc.) that has permission to the mailbox.
     $mailboxes = Get-Mailbox | Get-MailboxPermission -User $UserId
@@ -24,20 +25,32 @@ function Remove-ExchangeMailboxPermission{
         #try/catch
         Remove-MailboxPermission -Identity $identity -User $UserId -AccessRights FullAccess -Confirm:$false
     }
-
 }
 
-function Set-ExchangeMailbox{
+#Convert to shared mailbox before removing license
+function Convert-ExchangeMailboxToShared{
     param(
+        [string]$UserId
+    )
+    #try/Catch
+    Set-Mailbox -Identity $UserId -Type Shared    
+}
+
+function Set-ExchangeMailboxForwarding{
+        param(
         [string]$UserId,
         [string]$ForwardTo
     )
-
-    Set-Mailbox -Identity $UserId -Type Shared -DeliverToMailboxAndForward $True -ForwardingAddress $ForwardTo
+    #Try/Catch
+    Set-Mailbox -Identity $UserId -DeliverToMailboxAndForward $True -ForwardingAddress $ForwardTo
 }
 
-Connect-ExchangeOnline -UserPrincipalName $azureConfig.user
+if ($OffboardExchangeUser -eq $true -and $UserId -ne ""){
+    #$userMailboxData = Get-Mailbox -Identity $UserId
+    Remove-ExchangeMailboxPermission -UserId $UserId
+    Convert-ExchangeMailboxToShared -UserId $UserId
+    if($Forwarding -eq $true -and $ForwardTo -ne ""){
+        Set-ExchangeMailboxForwarding -UserId $UserId -ForwardTo $ForwardTo
+    }
+}
 
-# $userMailboxData = Get-Mailbox -Identity $UserId
-Remove-ExchangeMailboxPermission -UserId $userId
-Set-ExchangeMailbox -UserId $UserId -ForwardTo $ForwardTo

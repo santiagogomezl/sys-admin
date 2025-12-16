@@ -4,8 +4,9 @@
 ##Add argv with username
 param(
     [string]$User,
+    [bool]$OffboardUser=$false,
+    [bool]$GetUserData=$false,
     [bool]$ComputerReport=$false
-
 ) 
 
 $adConfig = Get-Content -Path '.\config\ad_config.json' | ConvertFrom-Json
@@ -15,6 +16,105 @@ $adCreds = New-Object System.Management.Automation.PSCredential(
     $adConfig.user, 
     (ConvertTo-SecureString $adConfig.pwd -AsPlainText -Force)
 )
+
+#Get-UserData
+function Get-UserData{
+    param(
+        [string]$User
+    )
+    #AD Controller uses SamAccountName i.e fisrt.last
+    $userData = Get-ADUser -Identity $User.Split("@")[0] -Properties *
+    return $userData
+}
+
+#Remove user from groups
+function Remove-UserGroups{
+    param( 
+        [object]$UserData, 
+        [System.Management.Automation.PSCredential]$Credential
+    )
+
+    $userSAM= $UserData.SamAccountName
+    $userGroups = $UserData.MemberOf
+    
+    foreach ($group in $userGroups){
+        Remove-ADGroupMember -Identity $group -Members $userSAM -Credential $Credential -Confirm:$false
+    }
+}
+
+#Disable user and move to "Former Employees"
+function Disable-UserAccount{
+    param(
+        [object]$UserData,
+        [System.Management.Automation.PSCredential]$Credential
+    )
+    ##try/catch
+    ##add login
+
+    $userSAM= $UserData.SamAccountName
+    $userDN = $UserData.DistinguishedName
+    $date = Get-Date -Format "MM/dd/yyyy"
+
+    Disable-ADAccount -Identity $userSAM -Credential $Credential
+    Set-ADUser -Identity $userSAM -Replace @{Description="Account disabled on $date by AD Controller"} -Credential $Credential
+    Move-ADObject -Identity $userDN -TargetPath $adConfig.formerDN -Credential $Credential
+
+    #Posibly disbale and remove computer from AD
+}
+
+function Get-ComputerData{
+    param(
+        [string]$Hostname
+    )
+    return Get-ADComputer -Identity $Hostname -Properties *
+}
+
+function ConvertTo-DateTime(){
+    param(
+        [long]$Timestamp
+    )
+    return [DateTime]::FromFileTime($Timestamp).ToString("yyyy-MM-dd HH:mm:ss")
+}
+
+function New-ComputerReport{
+    param(
+        [array]$ComputerList
+    )
+
+    foreach ($computer in $ComputerList){
+        $hostnames = $computer.hostnames
+        foreach ($hostname in $hostnames){
+            #try/catch
+            try{
+                $computerData = Get-ComputerData -Hostname $hostname
+                $computerOS = $computerData.OperatingSystem
+                $computerOSVersion = $computerData.OperatingSystemVersion
+                #Last logon to DC
+                $lastLogon = ConvertTo-DateTime -Timestamp $computerData.lastLogon
+                $badPasswordTime = ConvertTo-DateTime -Timestamp $computerData.badPasswordTime 
+                Write-Output "$hostname  $computerOS  $computerOSVersion $lastLogon $badPasswordTime"
+            }
+            catch{
+                #TODO: Write to log failure 
+            }
+        }
+    }
+}
+
+if ($ComputerReport -eq $true){
+    New-ComputerReport -ComputerList $computers
+}
+
+if ($GetUserData -eq $true -and $User -ne ""){
+    $userData = Get-UserData -User $User
+    Write-Output $userData
+}
+
+if ($OffboardUser -eq $true -and $User -ne ""){
+    $userData = Get-UserData -User $User
+    Remove-UserGroups -UserData $userData -Credential $adCreds
+    Disable-UserAccount -UserData $userData -Credential $adCreds
+}
 
 # Get Users From AD who are Enabled, Passwords Expire and are Not Currently Expired
 function Get-ActiveUsers{
@@ -88,101 +188,7 @@ function New-PasswordNotice{
     } 
 }
 
-#Get-UserData
-function Get-UserData{
-    param(
-        [string]$User
-    )
-    $userData = Get-ADUser -Identity $User -Properties *
-    return $userData
-}
-
-#Remove user from group
-function Remove-UserGroups{
-    param( 
-        [object]$UserData, 
-        [System.Management.Automation.PSCredential]$Credential
-    )
-
-    $userSAM= $UserData.SamAccountName
-    $userGroups = $UserData.MemberOf
-    
-    foreach ($group in $userGroups){
-        Remove-ADGroupMember -Identity $group -Members $userSAM -Credential $Credential -Confirm:$false
-    }
-}
-
-#Disable user and move to "Former Employees"
-function Disable-UserAccount{
-    param(
-        [object]$UserData,
-        [System.Management.Automation.PSCredential]$Credential
-    )
-    ##try/catch
-    ##add login
-
-    $userSAM= $UserData.SamAccountName
-    $userDN = $UserData.DistinguishedName
-    $date = Get-Date -Format "MM/dd/yyyy"
-
-    Disable-ADAccount -Identity $userSAM -Credential $Credential
-    Set-ADUser -Identity $userSAM -Replace @{Description="Account disabled on $date by AD Controller"} -Credential $Credential
-    Move-ADObject -Identity $userDN -TargetPath $adConfig.formerDN -Credential $Credential
-
-    #Posibly disbale and remove computer from AD
-}
-
-# function Get-ComputerData{
-#     param(
-#         [string]$Hostname
-#     )
-
-#     return Get-ADComputer -Identity $Hostname -Properties *
-
-# }
-
-function ConvertTo-DateTime(){
-    param(
-        [long]$Timestamp
-    )
-    return [DateTime]::FromFileTime($Timestamp).ToString("yyyy-MM-dd HH:mm:ss")
-}
-
-function New-ComputerReport{
-    param(
-        [array]$ComputerList
-    )
-
-    foreach ($computer in $ComputerList){
-        $hostnames = $computer.hostnames
-        foreach ($hostname in $hostnames){
-            #try/catch
-            try{
-                $computerData = Get-ADComputer -Identity $hostname -Properties *
-                $computerOS = $computerData.OperatingSystem
-                $computerOSVersion = $computerData.OperatingSystemVersion
-                #Last logon to DC
-                $lastLogon = ConvertTo-DateTime -Timestamp $computerData.lastLogon
-                $badPasswordTime = ConvertTo-DateTime -Timestamp $computerData.badPasswordTime 
-                Write-Output "$hostname  $computerOS  $computerOSVersion $lastLogon $badPasswordTime"
-            }
-            catch{
-                #TODO: Write to log failure 
-            }
-        }
-    }
-}
-
-if ($ComputerReport -eq $true){
-    New-ComputerReport -ComputerList $computers
-}
-#AD Controller uses SamAccountName
-# $userData = Get-UserData -User $User
-# Remove-UserGroups -UserData $userData -Credential $adCreds
-# Disable-UserAccount -UserData $userData -Credential $adCreds
-
 #$AD_ActiveUsers = Get-ActiveUsers
-# Write-Output $AD_ActiveUsers.GetType()
 #Password-Notice -ActiveUsers $AD_ActiveUsers
 
 

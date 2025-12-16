@@ -53,20 +53,20 @@ function Remove-AzureUserGroups{
         $groupData = Get-MgGroup -GroupId $groupId
         $groupName = $groupData.DisplayName
         #Distribution groups or mail enabled sec groups cannot be removed with Graph API
-        try{
+        if($groupData.MailEnabled -eq $true){
+            #Microsoft 365 GroupMailbox
+            #Distribution List MailUniversalDistributionGroup
             $recipientTypeDetails = (Get-Recipient -Identity $groupId).RecipientTypeDetails 
-            if ($recipientTypeDetails -eq "GroupMailbox"){
-                #Microsoft 365
-                Remove-MgGroupMemberByRef -GroupId $groupId -DirectoryObjectId $userObjectId
-            }else{
-                #Distribution List
-                Remove-DistributionGroupMember -Identity $groupId -Member $UserId -Confirm:$false
-            }
         }
-            #TODO: Write to log success user $UserId removed from $groupName
-        catch{
-            #TODO: Write to log failure 
-        }    
+        #try/catch
+        if (($recipientTypeDetails -eq "GroupMailbox") -or ($groupData.MailEnabled -eq $false)){
+            Remove-MgGroupMemberByRef -GroupId $groupId -DirectoryObjectId $userObjectId
+        }else{
+            Remove-DistributionGroupMember -Identity $groupId -Member $UserId -Confirm:$false
+        }
+    
+        #TODO: Write to log success user $UserId removed from $groupName
+        #TODO: Write to log failure 
     }
 
 }
@@ -113,9 +113,23 @@ if ($OffboardAzureUser -eq $true -and $UserId -ne ""){
     if($azureUserGroups){
         Remove-AzureUserGroups -UserId $UserId -Groups $azureUserGroups
     }
+    #Acount would be disabled from AD disable sync
     Disable-AzureUserAccount -UserId $UserId
 }
 
-#TODO: Remove APplication access to accounts
+#TODO: Remove Aplipcation access to accounts
+#TODO: Backup OneDrive
+#TODO: migrate mailbox
 
+# $gId = "cdceb4d8-e770-4f86-a695-fda6c00c5c7d"
+# Get-MgGroup -GroupId $gId | Format-List
+# (Get-Recipient -Identity $gId).RecipientTypeDetails 
+
+# $gId2 = "76e42277-f620-4f6e-a072-34d2552c62b2"
+# Get-MgGroup -GroupId $gId2 | Format-List
+# (Get-Recipient -Identity $gId2).RecipientTypeDetails 
+
+# $gId3 = "38c2b8c1-06a7-4b9d-b72d-8e4f8c97afeb"
+# Get-MgGroup -GroupId $gId3 | Format-List
+# (Get-Recipient -Identity $gId3).RecipientTypeDetails 
 
