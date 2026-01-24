@@ -95,6 +95,14 @@ function Disable-AzureUserAccount{
             #TODO: Write to log failure 
         }
     }
+
+    #Remove Enterprise Apps
+    $userApps = Get-MgUserAppRoleAssignment -UserId $UserId
+    if ($userApps){
+        foreach($app in $userApps){
+            Remove-MgUserAppRoleAssignment -UserId $UserId -AppRoleAssignmentId $app.Id
+        }
+    }
     
     #Disable user
     $params = @{
