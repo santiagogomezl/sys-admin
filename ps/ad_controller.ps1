@@ -5,6 +5,7 @@
 param(
     [string]$User,
     [bool]$OffboardUser=$false,
+    [bool]$Shared=$false,
     [bool]$GetUserData=$false,
     [bool]$ComputerReport=$false
 ) 
@@ -46,7 +47,8 @@ function Remove-UserGroups{
 function Disable-UserAccount{
     param(
         [object]$UserData,
-        [System.Management.Automation.PSCredential]$Credential
+        [System.Management.Automation.PSCredential]$Credential,
+        [bool]$Shared=$false
     )
     ##try/catch
     ##add login
@@ -55,9 +57,15 @@ function Disable-UserAccount{
     $userDN = $UserData.DistinguishedName
     $date = Get-Date -Format "MM/dd/yyyy"
 
+
     Disable-ADAccount -Identity $userSAM -Credential $Credential
     Set-ADUser -Identity $userSAM -Replace @{Description="Account disabled on $date by AD Controller"} -Credential $Credential
-    Move-ADObject -Identity $userDN -TargetPath $adConfig.formerDN -Credential $Credential
+
+    if ($Shared -eq $true){
+        Move-ADObject -Identity $userDN -TargetPath $adConfig.sharedDN -Credential $Credential
+    }else{
+        Move-ADObject -Identity $userDN -TargetPath $adConfig.formerDN -Credential $Credential
+    }
 
     #Posibly disbale and remove computer from AD
 }
@@ -113,7 +121,7 @@ if ($GetUserData -eq $true -and $User -ne ""){
 if ($OffboardUser -eq $true -and $User -ne ""){
     $userData = Get-UserData -User $User
     Remove-UserGroups -UserData $userData -Credential $adCreds
-    Disable-UserAccount -UserData $userData -Credential $adCreds
+    Disable-UserAccount -UserData $userData -Credential $adCreds -Shared $Shared
 }
 
 # Get Users From AD who are Enabled, Passwords Expire and are Not Currently Expired
