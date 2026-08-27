@@ -2,7 +2,10 @@ param(
     [string]$UserId,
     [bool]$OffboardExchangeUser=$false,
     [bool]$Forwarding=$false,
-    [string]$ForwardTo
+    [string]$ForwardTo,
+    [bool]$AutoReply = $false,
+    [string]$AlternativeContact
+
 )
 
 $azureConfig = Get-Content -Path '.\config\azure_config.json' | ConvertFrom-Json
@@ -18,13 +21,31 @@ function Remove-ExchangeMailboxPermission{
     #Get mailboxes user has permissions over. Iterates over all mailboxes
     # Identity: The mailbox in question.
     # User: The security principal (user, security group, Exchange management role group, etc.) that has permission to the mailbox.
-    $mailboxes = Get-Mailbox | Get-MailboxPermission -User $UserId
+    # Remove Full Access permissions
+
+    $mailboxes = Get-Mailbox -ResultSize Unlimited | Get-MailboxPermission -User $UserId
 
     foreach ($mailbox in $mailboxes) {
         $identity = $mailbox.Identity
+        Write-Host "Removing FullAccess from $($identity)"
         #try/catch
         Remove-MailboxPermission -Identity $identity -User $UserId -AccessRights FullAccess -Confirm:$false
     }
+
+    # Remove Send As permissions
+    $sendAsMailboxes = Get-Mailbox -ResultSize Unlimited | Get-RecipientPermission -Trustee $UserId
+
+    foreach ($mailbox in $sendAsMailboxes) {
+
+        Write-Host "Removing SendAs from $($mailbox.Identity)"
+
+        Remove-RecipientPermission `
+            -Identity $mailbox.Identity `
+            -Trustee $UserId `
+            -AccessRights SendAs `
+            -Confirm:$false
+    }
+
 }
 
 #Convert to shared mailbox before removing license
@@ -45,6 +66,36 @@ function Set-ExchangeMailboxForwarding{
     Set-Mailbox -Identity $UserId -DeliverToMailboxAndForward $True -ForwardingAddress $ForwardTo
 }
 
+# Configure automatic reply for former employee
+function Set-ExchangeMailboxAutoReply {
+    param(
+        [string]$UserId,
+        [string]$AlternativeContact
+    )
+
+    $InternalMessage = @"
+This employee is no longer with Applied StemCell.
+
+Please contact $AlternativeContact for assistance.
+"@
+
+    $ExternalMessage = @"
+Thank you for your email.
+
+This employee is no longer with Applied StemCell.
+
+Please contact $AlternativeContact for assistance.
+"@
+
+    Set-MailboxAutoReplyConfiguration `
+        -Identity $UserId `
+        -AutoReplyState Enabled `
+        -InternalMessage $InternalMessage `
+        -ExternalMessage $ExternalMessage `
+        -ExternalAudience All
+}
+
+
 if ($OffboardExchangeUser -eq $true -and $UserId -ne ""){
     #$userMailboxData = Get-Mailbox -Identity $UserId
     Remove-ExchangeMailboxPermission -UserId $UserId
@@ -52,5 +103,24 @@ if ($OffboardExchangeUser -eq $true -and $UserId -ne ""){
     if($Forwarding -eq $true -and $ForwardTo -ne ""){
         Set-ExchangeMailboxForwarding -UserId $UserId -ForwardTo $ForwardTo
     }
+
+     if ($AutoReply -eq $true -and $AlternativeContact -ne "") {
+        Set-ExchangeMailboxAutoReply `
+            -UserId $UserId `
+            -AlternativeContact $AlternativeContact
+    }
 }
 
+if ($AutoReply -eq $true -and $AlternativeContact -ne "" -and $UserId -ne "") {
+    Set-ExchangeMailboxAutoReply `
+        -UserId $UserId `
+        -AlternativeContact $AlternativeContact
+
+}
+
+if ($Forwarding -eq $true -and $ForwardTo -ne "" -and $UserId -ne "") {
+        Set-ExchangeMailboxForwarding -UserId $UserId -ForwardTo $ForwardTo
+}
+
+Get-MailboxAutoReplyConfiguration -Identity $UserId |
+    Format-List AutoReplyState,ExternalAudience,InternalMessage,ExternalMessage
