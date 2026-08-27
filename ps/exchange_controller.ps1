@@ -22,7 +22,6 @@ function Remove-ExchangeMailboxPermission{
     # Identity: The mailbox in question.
     # User: The security principal (user, security group, Exchange management role group, etc.) that has permission to the mailbox.
     # Remove Full Access permissions
-
     $mailboxes = Get-Mailbox -ResultSize Unlimited | Get-MailboxPermission -User $UserId
 
     foreach ($mailbox in $mailboxes) {
@@ -32,20 +31,27 @@ function Remove-ExchangeMailboxPermission{
         Remove-MailboxPermission -Identity $identity -User $UserId -AccessRights FullAccess -Confirm:$false
     }
 
-    # Remove Send As permissions
-    $sendAsMailboxes = Get-Mailbox -ResultSize Unlimited | Get-RecipientPermission -Trustee $UserId
+    #Remove Send As permissions
+    $recipients = Get-Recipient -ResultSize Unlimited
+    foreach ($recipient in $recipients) {
 
-    foreach ($mailbox in $sendAsMailboxes) {
-
-        Write-Host "Removing SendAs from $($mailbox.Identity)"
-
-        Remove-RecipientPermission `
-            -Identity $mailbox.Identity `
+        $permission = Get-RecipientPermission `
+            -Identity $recipient.Guid `
             -Trustee $UserId `
-            -AccessRights SendAs `
-            -Confirm:$false
-    }
+            -ErrorAction SilentlyContinue |
+            Where-Object { $_.AccessRights -contains "SendAs" }
 
+        if ($permission) {
+
+            Write-Host "Removing SendAs from $($recipient.PrimarySmtpAddress)"
+
+            Remove-RecipientPermission `
+                -Identity $recipient.Guid `
+                -Trustee $UserId `
+                -AccessRights SendAs `
+                -Confirm:$false
+        }
+    }
 }
 
 #Convert to shared mailbox before removing license
@@ -97,7 +103,6 @@ Please contact $AlternativeContact for assistance.
 
 
 if ($OffboardExchangeUser -eq $true -and $UserId -ne ""){
-    #$userMailboxData = Get-Mailbox -Identity $UserId
     Remove-ExchangeMailboxPermission -UserId $UserId
     Convert-ExchangeMailboxToShared -UserId $UserId
     if($Forwarding -eq $true -and $ForwardTo -ne ""){
@@ -121,6 +126,3 @@ if ($AutoReply -eq $true -and $AlternativeContact -ne "" -and $UserId -ne "") {
 if ($Forwarding -eq $true -and $ForwardTo -ne "" -and $UserId -ne "") {
         Set-ExchangeMailboxForwarding -UserId $UserId -ForwardTo $ForwardTo
 }
-
-Get-MailboxAutoReplyConfiguration -Identity $UserId |
-    Format-List AutoReplyState,ExternalAudience,InternalMessage,ExternalMessage
